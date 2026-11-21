@@ -1,3 +1,5 @@
+import re
+
 import aiohttp
 
 from astrbot.api.event import filter, AstrMessageEvent
@@ -9,31 +11,29 @@ from astrbot.api.star import Context, Star, register
 DSH_BRIDGE_URL = "http://127.0.0.1:6700/bridge"  # DSH 插件的 HTTP 桥
 DSH_TOKEN = ""          # 若 DSH 设置页填了 Access Token，这里填同一个；留空表示仅本机
 OWNER_QQ = "2770377405"      # 只有这个 QQ 的私聊会被转发，留空表示不限制
-PREFIX = "!dsh"         # 可选的后备指令前缀；正常模式下不用它
-ROUTER_PROMPT = (
-    "你是路由器。判断用户这句话是否要求在这台电脑上动手做事——"
-    "例如查看磁盘/内存/CPU、读写文件、执行命令、开关程序、截图、下载、安装、"
-    "整理桌面、发送文件等。只是聊天、提问、要建议、写作、翻译、情感交流，都不算。\n"
-    "只回答一个词：YES 或 NO。"
-)
-INSTRUCT = (
-    "【重要】这台 Windows 电脑上的实际操作，全部由 dsh_computer 工具代你执行。"
-    "你拥有本机的完整权限：查看磁盘、读写文件、执行命令、开关程序、截图、发文件、操作浏览器，"
-    "都可以直接调用 dsh_computer 完成，不需要任何额外授权。"
-    "当用户提出本机操作需求时，必须立即调用 dsh_computer（task 写清楚目标、路径和期望结果），"
-    "不要回答“被拦住”“没有权限”，不要要求用户去设置里打开任何开关，也不要编造执行结果。"
-    "工具返回结果后，用你自己的口吻把结果告诉用户。"
+PREFIX = "!dsh"         # 手动兜底前缀，任何时候都能用
+
+# 直接命中这些词的私聊，立刻交给 DSH，不再额外问一次模型（零延迟）。
+OG_RE = re.compile(
+    r"磁盘|硬盘|d盘|c盘|e盘|f盘|g盘|空间|容量|占用|内存|cpu|处理器|进程|任务管理器|"
+    r"文件|文件夹|目录|桌面|截图|屏幕|窗口|"
+    r"打开|启动|关闭|运行|执行|安装|卸载|下载|上传|"
+    r"命令|终端|powershell|cmd|端口|网络|服务|"
+    r"清理|删除|移动|复制|重命名|压缩|解压|"
+    r"发我|发给我|传我|保存|写入|读取|"
+    r"电脑.*(状态|配置|情况)|电池|电量",
+    re.IGNORECASE,
 )
 
-# 这些内置工具会和 dsh_computer 抢活干，也会让模型误以为自己没有权限；每次请求前从工具集里摘掉。
-_COMPETING_TOOL_KEYWORDS = (
-    "shell",
-    "exec",
-    "file",
-    "screen",
-    "computer",
-    "desktop",
-    "process",
+MARKER = "[[DSH]]"
+
+INSTRUCT = (
+    "【重要】这台 Windows 电脑上的实际操作由 DSH 代你执行。"
+    "判断规则：如果这个问题你能凭常识、知识或聊天直接回答（聊天、写作、翻译、建议、情感交流、常识问答），"
+    "就正常回答，不要调用任何电脑工具；"
+    "如果必须看这台电脑的真实情况或改动它（磁盘/内存/CPU、文件、命令、程序、截图、下载、发送文件），"
+    "就只输出一行：[[DSH]]要执行的任务（写清目标、路径和期望结果），不要输出别的字。"
+    "插件会把这一行替换成真实执行结果。不要回答“被拦住”“没有权限”，不要要求用户去设置里打开开关，也不要编造结果。"
 )
 
 
@@ -48,7 +48,9 @@ def _strip_competing_tools(req) -> None:
         if name == "dsh_computer":
             continue
         low = name.lower()
-        if low.startswith("astrbot_") and any(k in low for k in _COMPETING_TOOL_KEYWORDS):
+        if low.startswith("astrbot_") and any(
+            k in low for k in ("shell", "exec", "file", "screen", "computer", "desktop", "process")
+        ):
             drop.append(name)
     for name in drop:
         try:
@@ -73,7 +75,7 @@ async def call_dsh(user_id: str, text: str) -> str:
     return "\n".join(replies)
 
 
-@register("dsh_bridge", "Aurora", "把电脑操作交给本机 DSH 执行（函数调用，无需前缀）", "0.2.0")
+@register("dsh_bridge", "Aurora", "把电脑操作交给本机 DSH 执行（按需动手，不用前缀）", "0.3.0")
 class DshBridge(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -85,7 +87,7 @@ class DshBridge(Star):
 
     @filter.on_llm_request()
     async def inject_instruction(self, event: AstrMessageEvent, req):
-        """把“可以用 DSH 操作电脑”写进系统提示，并摘掉会抢活的内置工具。"""
+        """把判断规则写进系统提示，并摘掉会抢活的内置工具。"""
         try:
             req.system_prompt += "\n\n" + INSTRUCT
         except Exception:
@@ -105,66 +107,51 @@ class DshBridge(Star):
         if not await self._allowed(event):
             return "你没有指挥这台电脑的权限。"
         try:
-            result = await call_dsh(str(event.get_sender_id()), task)
+            return (await call_dsh(str(event.get_sender_id()), task))[:8000]
         except Exception as exc:
             return "连不上 DSH：" + str(exc)
-        return result[:8000]
 
-    async def _needs_hands(self, event: AstrMessageEvent) -> bool:
-        """让当前对话模型先判断题：这句话要不要动电脑。
+    @filter.on_llm_response()
+    async def after_llm(self, event: AstrMessageEvent, resp):
+        """模型自己判断“要动手”时会输出 [[DSH]]任务；这里替换成真实执行结果。
 
-        用一个独立的、纯文本的小请求来判断，不依赖模型的函数调用能力
-        （有些中转 provider 不会透传 tools 字段）。
+        没有额外请求：判断和回答是同一次模型调用。
         """
-        text = (event.message_str or "").strip()
-        if not text:
-            return False
+        text = getattr(resp, "completion_text", "") or ""
+        idx = text.find(MARKER)
+        if idx == -1:
+            return
+        if not await self._allowed(event):
+            resp.completion_text = "你没有指挥这台电脑的权限。"
+            return
+        task = text[idx + len(MARKER):].strip()
+        if not task:
+            resp.completion_text = ""
+            return
         try:
-            provider = self.context.get_using_provider(event.unified_msg_origin)
-        except Exception:
-            provider = None
-        if provider is None:
-            return False
-        prompt = ROUTER_PROMPT + "\n\n用户这句话：" + text
-        try:
-            resp = await provider.text_chat(
-                prompt=prompt,
-                session_id=event.unified_msg_origin,
-            )
-            answer = (resp.completion_text or "").strip().lower()
-        except Exception:
-            return False
-        return answer.startswith("yes") or answer.startswith("是")
+            resp.completion_text = await call_dsh(str(event.get_sender_id()), task)
+        except Exception as exc:
+            resp.completion_text = "连不上 DSH：" + str(exc)
 
     @filter.event_message_type(filter.EventMessageType.PRIVATE_MESSAGE)
     async def on_private_message(self, event: AstrMessageEvent):
-        """!dsh 前缀直接转发；其余私聊先让模型判断要不要动手。"""
+        """!dsh 前缀直接转发；命中干活词直接转发；其余交给 AstrBot 正常聊天。"""
         text = (event.message_str or "").strip()
+        if not await self._allowed(event):
+            return
 
         if text.lower().startswith(PREFIX):
-            if not await self._allowed(event):
-                event.stop_event()
-                yield event.plain_result("你没有指挥这台电脑的权限。")
-                return
             prompt = text[len(PREFIX):].strip() or "你好"
             event.stop_event()
             try:
-                result = await call_dsh(str(event.get_sender_id()), prompt)
+                yield event.plain_result(await call_dsh(str(event.get_sender_id()), prompt))
             except Exception as exc:
                 yield event.plain_result("连不上 DSH：" + str(exc))
-                return
-            yield event.plain_result(result)
             return
 
-        # 不用指令：由模型判断“这件事要不要动手”
-        if not await self._allowed(event):
-            return
-        if not await self._needs_hands(event):
-            return
-        event.stop_event()
-        try:
-            result = await call_dsh(str(event.get_sender_id()), text)
-        except Exception as exc:
-            yield event.plain_result("连不上 DSH：" + str(exc))
-            return
-        yield event.plain_result(result)
+        if OG_RE.search(text):
+            event.stop_event()
+            try:
+                yield event.plain_result(await call_dsh(str(event.get_sender_id()), text))
+            except Exception as exc:
+                yield event.plain_result("连不上 DSH：" + str(exc))
