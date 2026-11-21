@@ -1,0 +1,18 @@
+# deps
+node_modules/
+pnpm-lock.yaml
+
+# local test artifacts
+.test-workspace/
+*.log
+.out/
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# python
+__pycache__/
+*.pyc

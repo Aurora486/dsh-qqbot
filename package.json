@@ -1,0 +1,44 @@
+{
+  "name": "@local/dsh-qqbot",
+  "version": "0.2.0",
+  "description": "Bridge a QQ account (OneBot v11) to DeepSeek Harness agents, with per-bot permission controls.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "locale",
+    "docs",
+    "vendor",
+    "astrbot_plugin_dsh_bridge",
+    "README.md",
+    "LICENSE",
+    "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "qq",
+    "onebot",
+    "napcat",
+    "astrbot",
+    "bot"
+  ],
+  "author": "Aurora",
+  "license": "MIT"
+}

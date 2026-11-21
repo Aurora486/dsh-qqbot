@@ -1,0 +1,6 @@
+name: astrbot_plugin_dsh_bridge
+display_name: DSH 电脑助手桥
+desc: 把本机操作交给 DSH 执行：AstrBot 负责 QQ 收发与人设，DSH 负责真正干活（模型通过 dsh_computer 工具调用，无需前缀）。
+version: v0.2.0
+author: Aurora
+repo: ""

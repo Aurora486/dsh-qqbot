@@ -1,0 +1,8 @@
+# Loader patch for dsh-qqbot.
+# The OneBot v11 reverse WebSocket endpoint is started by the plugin itself
+# (default ws://127.0.0.1:6700), so no extra DSH services are required.
+# Configure the plugin from the DSH sidebar: Plugins -> "QQ 机器人" -> settings.
+- insert:
+    - id: qqbot
+      name: '@local/dsh-qqbot'
+      config: {}
