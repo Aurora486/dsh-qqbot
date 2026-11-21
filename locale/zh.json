@@ -2,6 +2,6 @@
   "meta": {
     "title": "QQ 机器人",
     "description": "把 DSH 接到 QQ：指定 QQ 号私聊发指令，让电脑上的 DSH 干活、发文件；权限档位和工具开关都在本页设置。",
-    "detail": "通过 OneBot v11 反向 WebSocket 接入（NapCat / LLOneBot / Lagrange 均可）。只允许 owners 里的 QQ 号私聊指挥；三档权限：safe（只读）、standard（工作区可写 + 危险操作需在 QQ 里批准）、full（完全放开）。安装后在插件设置里填 owner QQ 号和端口，再把 NapCat 的反向 WS 地址指向本机端口即可。"
+    "detail": "docs/DETAIL.md"
   }
 }

@@ -6,7 +6,9 @@
   "main": "index.js",
   "exports": {
     ".": "./index.js",
-    "./client": "./client.js"
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
   },
   "dsh": {
     "bundle": {
@@ -24,10 +26,12 @@
     "lib",
     "locale",
     "docs",
+    "locale",
     "vendor",
     "astrbot_plugin_dsh_bridge",
     "README.md",
     "LICENSE",
+    "icon.svg",
     "cordis.patch.yml"
   ],
   "keywords": [

@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "QQ bot",
+    "description": "Bridge DeepSeek Harness to QQ: private-message the bot from an allowlisted account and let it work on your PC and send files back. Permissions and tool switches live on this page.",
+    "detail": "docs/DETAIL.md"
+  }
+}
